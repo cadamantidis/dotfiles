@@ -16,13 +16,13 @@ echo "=== Dotfiles Bootstrap ==="
 
 # 1. Install dependencies
 echo ""
-echo "[1/6] Installing packages..."
+echo "[1/7] Installing packages..."
 sudo apt update -qq
 sudo apt install -y -qq zsh curl git jq
 
 # 2. Install Oh My Zsh (skip if already installed)
 echo ""
-echo "[2/6] Installing Oh My Zsh..."
+echo "[2/7] Installing Oh My Zsh..."
 if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
   RUNZSH=no KEEP_ZSHRC=yes sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 else
@@ -31,7 +31,7 @@ fi
 
 # 3. Install custom plugins
 echo ""
-echo "[3/6] Installing plugins..."
+echo "[3/7] Installing plugins..."
 ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
 
 if [[ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]]; then
@@ -48,7 +48,7 @@ fi
 
 # 4. Install Powerlevel10k
 echo ""
-echo "[4/6] Installing Powerlevel10k..."
+echo "[4/7] Installing Powerlevel10k..."
 if [[ ! -d "$ZSH_CUSTOM/themes/powerlevel10k" ]]; then
   git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$ZSH_CUSTOM/themes/powerlevel10k"
 else
@@ -57,7 +57,7 @@ fi
 
 # 5. Install MesloLGS NF fonts (into Windows user fonts directory)
 echo ""
-echo "[5/6] Installing MesloLGS NF fonts..."
+echo "[5/7] Installing MesloLGS NF fonts..."
 FONT_BASE_URL="https://github.com/romkatv/powerlevel10k-media/raw/master"
 FONT_FILES=(
   "MesloLGS NF Regular.ttf"
@@ -121,9 +121,50 @@ if [[ -n "$WIN_USER" ]]; then
   fi
 fi
 
-# 6. Symlink dotfiles
+# 6. Install Docker Engine
 echo ""
-echo "[6/6] Symlinking dotfiles..."
+echo "[6/7] Installing Docker Engine..."
+if command -v docker &>/dev/null; then
+  echo "  already installed: $(docker --version)"
+else
+  # Install prerequisites
+  sudo apt install -y -qq ca-certificates gnupg
+
+  # Add Docker's official GPG key
+  sudo install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+  # Add Docker apt repository
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+  sudo apt update -qq
+  sudo apt install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  echo "  installed: $(docker --version)"
+fi
+
+# Add current user to docker group (avoids needing sudo for docker commands)
+if groups "$USER" | grep -q '\bdocker\b'; then
+  echo "  user already in docker group."
+else
+  sudo usermod -aG docker "$USER"
+  echo "  added $USER to docker group (log out and back in to take effect)."
+fi
+
+# Ensure Docker daemon is running
+if sudo service docker status &>/dev/null; then
+  echo "  Docker daemon is running."
+else
+  sudo service docker start
+  echo "  Docker daemon started."
+fi
+
+# 7. Symlink dotfiles
+echo ""
+echo "[7/7] Symlinking dotfiles..."
 bash "$DOTFILES_DIR/symlink.sh"
 
 # Set zsh as default shell
