@@ -1,0 +1,6 @@
+[user]
+	name = Chris Adamantidis
+	email = cadamantidis@gmail.com
+
+[init]
+	defaultBranch = main

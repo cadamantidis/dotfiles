@@ -25,5 +25,5 @@ link_file() {
 echo "Symlinking dotfiles..."
 link_file "$DOTFILES_DIR/zsh/.zshrc" "$HOME/.zshrc"
 [[ -f "$DOTFILES_DIR/zsh/.p10k.zsh" ]] && link_file "$DOTFILES_DIR/zsh/.p10k.zsh" "$HOME/.p10k.zsh"
-[[ -f "$DOTFILES_DIR/git/.gitconfig" ]] && link_file "$DOTFILES_DIR/git/.gitconfig" "$HOME/.gitconfig"
+link_file "$DOTFILES_DIR/git/.gitconfig" "$HOME/.gitconfig"
 echo "Done."
