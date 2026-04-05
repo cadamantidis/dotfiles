@@ -3,6 +3,15 @@ set -euo pipefail
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Parse flags
+QUICK=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -q|--quick) QUICK=true; shift ;;
+    *) echo "Unknown option: $1"; exit 1 ;;
+  esac
+done
+
 echo "=== Dotfiles Bootstrap ==="
 
 # 1. Install dependencies
@@ -97,13 +106,52 @@ if [[ "$SHELL" != "$(which zsh)" ]]; then
   chsh -s "$(which zsh)"
 fi
 
+# Powerlevel10k configuration
+echo ""
+HAS_REPO_CONFIG=false
+[[ -f "$DOTFILES_DIR/zsh/.p10k.zsh" ]] && HAS_REPO_CONFIG=true
+
+if $HAS_REPO_CONFIG; then
+  if $QUICK; then
+    echo "p10k config found in repo — skipping reconfiguration (quick mode)."
+  else
+    echo "Existing p10k config detected in repo."
+    read -rp "Reconfigure Powerlevel10k? [y/N] " answer
+    if [[ "${answer,,}" == "y" ]]; then
+      zsh -ic "p10k configure"
+      # If p10k wrote a new file (not our symlink), capture it into the repo
+      if [[ -f "$HOME/.p10k.zsh" && ! -L "$HOME/.p10k.zsh" ]]; then
+        mv "$HOME/.p10k.zsh" "$DOTFILES_DIR/zsh/.p10k.zsh"
+        ln -s "$DOTFILES_DIR/zsh/.p10k.zsh" "$HOME/.p10k.zsh"
+        echo "  updated p10k config in repo."
+      fi
+    else
+      echo "  keeping existing config."
+    fi
+  fi
+else
+  # Check if user already ran p10k configure outside of this script
+  if [[ -f "$HOME/.p10k.zsh" && ! -L "$HOME/.p10k.zsh" ]]; then
+    echo "Found p10k config at ~/.p10k.zsh — moving into repo..."
+    mv "$HOME/.p10k.zsh" "$DOTFILES_DIR/zsh/.p10k.zsh"
+    ln -s "$DOTFILES_DIR/zsh/.p10k.zsh" "$HOME/.p10k.zsh"
+    echo "  done."
+  else
+    echo "No p10k config found. Launching configurator..."
+    zsh -ic "p10k configure"
+    # Capture the generated config
+    if [[ -f "$HOME/.p10k.zsh" && ! -L "$HOME/.p10k.zsh" ]]; then
+      mv "$HOME/.p10k.zsh" "$DOTFILES_DIR/zsh/.p10k.zsh"
+      ln -s "$DOTFILES_DIR/zsh/.p10k.zsh" "$HOME/.p10k.zsh"
+      echo "  p10k config saved to repo."
+    elif [[ -f "$HOME/.p10k.zsh" && -L "$HOME/.p10k.zsh" ]]; then
+      echo "  p10k config already symlinked."
+    else
+      echo "  WARNING: p10k configure did not produce a config file."
+      echo "  Run 'p10k configure' manually in zsh, then re-run this script."
+    fi
+  fi
+fi
+
 echo ""
 echo "=== Bootstrap complete! ==="
-
-# Prompt for p10k configuration if no config exists in the repo
-if [[ ! -f "$DOTFILES_DIR/zsh/.p10k.zsh" ]]; then
-  echo ""
-  echo "No Powerlevel10k config found in the repo."
-  echo "Open a new zsh session and run: p10k configure"
-  echo "Then run: mv ~/.p10k.zsh $DOTFILES_DIR/zsh/.p10k.zsh && ln -s $DOTFILES_DIR/zsh/.p10k.zsh ~/.p10k.zsh"
-fi
