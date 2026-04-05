@@ -5,7 +5,7 @@ fi
 
 # Path to Oh My Zsh installation
 export ZSH="$HOME/.oh-my-zsh"
-
+export PATH="$PATH:$HOME/.local/bin"
 # Theme
 ZSH_THEME="powerlevel10k/powerlevel10k"
 
