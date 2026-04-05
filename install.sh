@@ -18,7 +18,7 @@ echo "=== Dotfiles Bootstrap ==="
 echo ""
 echo "[1/6] Installing packages..."
 sudo apt update -qq
-sudo apt install -y -qq zsh curl git
+sudo apt install -y -qq zsh curl git jq
 
 # 2. Install Oh My Zsh (skip if already installed)
 echo ""
@@ -78,6 +78,9 @@ if [[ -n "$WIN_USER" ]]; then
       break
     fi
   done
+  WIN_FONT_DIR_WIN="C:\\Users\\$WIN_USER\\AppData\\Local\\Microsoft\\Windows\\Fonts"
+  REG_KEY='HKCU\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
+
   if $ALL_INSTALLED; then
     echo "  all fonts already installed."
   else
@@ -86,12 +89,33 @@ if [[ -n "$WIN_USER" ]]; then
         echo "  downloading: $font"
         curl -fsSL -o "$WIN_FONT_DIR/$font" "$FONT_BASE_URL/${font// /%20}"
       fi
+      # Register font in Windows registry (idempotent — overwrites if exists)
+      FONT_NAME="${font%.ttf} (TrueType)"
+      FONT_PATH_WIN="${WIN_FONT_DIR_WIN}\\${font}"
+      reg.exe add "$REG_KEY" /v "$FONT_NAME" /t REG_SZ /d "$FONT_PATH_WIN" /f > /dev/null 2>&1
     done
-    echo "  fonts installed to: $WIN_FONT_DIR"
-    echo "  NOTE: Set 'MesloLGS NF' as the font face in Windows Terminal settings."
+    echo "  fonts installed and registered."
   fi
 else
   echo "  WSL interop not available — install MesloLGS NF fonts manually."
+fi
+
+# Configure Windows Terminal to use MesloLGS NF
+if [[ -n "$WIN_USER" ]]; then
+  WT_SETTINGS="/mnt/c/Users/$WIN_USER/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json"
+  if [[ -f "$WT_SETTINGS" ]]; then
+    CURRENT_FONT=$(jq -r '.profiles.defaults.font.face // empty' "$WT_SETTINGS")
+    if [[ "$CURRENT_FONT" == "MesloLGS NF" ]]; then
+      echo "  Windows Terminal font already set."
+    else
+      echo "  configuring Windows Terminal font to MesloLGS NF..."
+      jq '.profiles.defaults.font = (.profiles.defaults.font // {}) + {"face": "MesloLGS NF"}' "$WT_SETTINGS" > "${WT_SETTINGS}.tmp"
+      mv "${WT_SETTINGS}.tmp" "$WT_SETTINGS"
+      echo "  done. Windows Terminal will pick up the change automatically."
+    fi
+  else
+    echo "  Windows Terminal settings not found — set font to 'MesloLGS NF' manually."
+  fi
 fi
 
 # 6. Symlink dotfiles
