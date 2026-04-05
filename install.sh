@@ -71,30 +71,33 @@ WIN_USER=$(cmd.exe /C "echo %USERNAME%" 2>/dev/null | tr -d '\r' || true)
 if [[ -n "$WIN_USER" ]]; then
   WIN_FONT_DIR="/mnt/c/Users/$WIN_USER/AppData/Local/Microsoft/Windows/Fonts"
   mkdir -p "$WIN_FONT_DIR"
-  ALL_INSTALLED=true
-  for font in "${FONT_FILES[@]}"; do
-    if [[ ! -f "$WIN_FONT_DIR/$font" ]]; then
-      ALL_INSTALLED=false
-      break
-    fi
-  done
   WIN_FONT_DIR_WIN="C:\\Users\\$WIN_USER\\AppData\\Local\\Microsoft\\Windows\\Fonts"
   REG_KEY='HKCU\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
 
-  if $ALL_INSTALLED; then
-    echo "  all fonts already installed."
+  FONTS_CHANGED=false
+  for font in "${FONT_FILES[@]}"; do
+    # Download if missing
+    if [[ ! -f "$WIN_FONT_DIR/$font" ]]; then
+      echo "  downloading: $font"
+      curl -fsSL -o "$WIN_FONT_DIR/$font" "$FONT_BASE_URL/${font// /%20}"
+      FONTS_CHANGED=true
+    fi
+    # Always ensure font is registered in Windows (idempotent)
+    FONT_NAME="${font%.ttf} (TrueType)"
+    FONT_PATH_WIN="${WIN_FONT_DIR_WIN}\\${font}"
+    reg.exe add "$REG_KEY" /v "$FONT_NAME" /t REG_SZ /d "$FONT_PATH_WIN" /f > /dev/null 2>&1
+  done
+
+  # Verify registration
+  REGISTERED=$(reg.exe query "$REG_KEY" 2>/dev/null | grep -c "MesloLGS" || true)
+  if [[ "$REGISTERED" -eq "${#FONT_FILES[@]}" ]]; then
+    if $FONTS_CHANGED; then
+      echo "  fonts installed and registered."
+    else
+      echo "  all fonts already installed and registered."
+    fi
   else
-    for font in "${FONT_FILES[@]}"; do
-      if [[ ! -f "$WIN_FONT_DIR/$font" ]]; then
-        echo "  downloading: $font"
-        curl -fsSL -o "$WIN_FONT_DIR/$font" "$FONT_BASE_URL/${font// /%20}"
-      fi
-      # Register font in Windows registry (idempotent — overwrites if exists)
-      FONT_NAME="${font%.ttf} (TrueType)"
-      FONT_PATH_WIN="${WIN_FONT_DIR_WIN}\\${font}"
-      reg.exe add "$REG_KEY" /v "$FONT_NAME" /t REG_SZ /d "$FONT_PATH_WIN" /f > /dev/null 2>&1
-    done
-    echo "  fonts installed and registered."
+    echo "  WARNING: only $REGISTERED/${#FONT_FILES[@]} fonts registered. Check registry manually."
   fi
 else
   echo "  WSL interop not available — install MesloLGS NF fonts manually."
