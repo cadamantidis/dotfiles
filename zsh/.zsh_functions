@@ -1,0 +1,64 @@
+# Azure DevOps PR: create, approve, and merge in one command
+# Usage: azpr [source-branch] [target-branch]
+#   source-branch  defaults to current git branch
+#   target-branch  defaults to main
+azpr() {
+  local source_branch="${1:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null)}"
+  local target_branch="${2:-main}"
+
+  if [[ -z "$source_branch" ]]; then
+    echo "azpr: error — could not determine source branch (not in a git repo?)" >&2
+    return 1
+  fi
+
+  if [[ "$source_branch" == "$target_branch" ]]; then
+    echo "azpr: error — source and target branches are the same ($source_branch)" >&2
+    return 1
+  fi
+
+  echo "azpr: $source_branch → $target_branch"
+  read -q "REPLY?Create, approve, and merge? [y/N] "
+  echo
+  if [[ "$REPLY" != "y" ]]; then
+    echo "azpr: aborted"
+    return 0
+  fi
+
+  local pr_id
+  pr_id=$(az repos pr create \
+    --source-branch "$source_branch" \
+    --target-branch "$target_branch" \
+    --title "Merge $source_branch → $target_branch" \
+    --output tsv \
+    --query pullRequestId 2>&1)
+
+  if [[ $? -ne 0 || -z "$pr_id" || ! "$pr_id" =~ ^[0-9]+$ ]]; then
+    echo "azpr: error — failed to create PR" >&2
+    echo "$pr_id" >&2
+    return 1
+  fi
+
+  echo "azpr: created  PR #$pr_id"
+
+  az repos pr set-vote --id "$pr_id" --vote approve --output none
+  if [[ $? -ne 0 ]]; then
+    echo "azpr: warning — approval failed; PR #$pr_id may need manual approval" >&2
+  else
+    echo "azpr: approved PR #$pr_id"
+  fi
+
+  az repos pr update \
+    --id "$pr_id" \
+    --status completed \
+    --bypass-policy true \
+    --bypass-policy-reason "auto-merge" \
+    --delete-source-branch false \
+    --output none
+
+  if [[ $? -eq 0 ]]; then
+    echo "azpr: merged   PR #$pr_id  ($source_branch → $target_branch)"
+  else
+    echo "azpr: error — merge failed; complete PR #$pr_id manually" >&2
+    return 1
+  fi
+}

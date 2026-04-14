@@ -14,11 +14,24 @@ done
 
 echo "=== Dotfiles Bootstrap ==="
 
+# Detect OS
+IS_MAC=false
+[[ "$(uname)" == "Darwin" ]] && IS_MAC=true
+
 # 1. Install dependencies
 echo ""
 echo "[1/7] Installing packages..."
-sudo apt update -qq
-sudo apt install -y -qq zsh curl git jq
+if $IS_MAC; then
+  if ! command -v brew &>/dev/null; then
+    echo "  Installing Homebrew..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null || true)"
+  fi
+  brew install git jq
+else
+  sudo apt update -qq
+  sudo apt install -y -qq zsh curl git jq
+fi
 
 # 2. Install Oh My Zsh (skip if already installed)
 echo ""
@@ -55,7 +68,7 @@ else
   echo "  already installed."
 fi
 
-# 5. Install MesloLGS NF fonts (into Windows user fonts directory)
+# 5. Install MesloLGS NF fonts
 echo ""
 echo "[5/7] Installing MesloLGS NF fonts..."
 FONT_BASE_URL="https://github.com/romkatv/powerlevel10k-media/raw/master"
@@ -66,58 +79,72 @@ FONT_FILES=(
   "MesloLGS NF Bold Italic.ttf"
 )
 
-# Detect Windows user fonts directory via WSL interop
-WIN_USER=$(cmd.exe /C "echo %USERNAME%" 2>/dev/null | tr -d '\r' || true)
-if [[ -n "$WIN_USER" ]]; then
-  WIN_FONT_DIR="/mnt/c/Users/$WIN_USER/AppData/Local/Microsoft/Windows/Fonts"
-  mkdir -p "$WIN_FONT_DIR"
-  WIN_FONT_DIR_WIN="C:\\Users\\$WIN_USER\\AppData\\Local\\Microsoft\\Windows\\Fonts"
-  REG_KEY='HKCU\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
-
+if $IS_MAC; then
+  # Install to macOS user fonts directory
+  MAC_FONT_DIR="$HOME/Library/Fonts"
+  mkdir -p "$MAC_FONT_DIR"
   FONTS_CHANGED=false
   for font in "${FONT_FILES[@]}"; do
-    # Download if missing
-    if [[ ! -f "$WIN_FONT_DIR/$font" ]]; then
+    if [[ ! -f "$MAC_FONT_DIR/$font" ]]; then
       echo "  downloading: $font"
-      curl -fsSL -o "$WIN_FONT_DIR/$font" "$FONT_BASE_URL/${font// /%20}"
+      curl -fsSL -o "$MAC_FONT_DIR/$font" "$FONT_BASE_URL/${font// /%20}"
       FONTS_CHANGED=true
     fi
-    # Always ensure font is registered in Windows (idempotent)
-    FONT_NAME="${font%.ttf} (TrueType)"
-    FONT_PATH_WIN="${WIN_FONT_DIR_WIN}\\${font}"
-    reg.exe add "$REG_KEY" /v "$FONT_NAME" /t REG_SZ /d "$FONT_PATH_WIN" /f > /dev/null 2>&1
   done
-
-  # Verify registration
-  REGISTERED=$(reg.exe query "$REG_KEY" 2>/dev/null | grep -c "MesloLGS" || true)
-  if [[ "$REGISTERED" -eq "${#FONT_FILES[@]}" ]]; then
-    if $FONTS_CHANGED; then
-      echo "  fonts installed and registered."
-    else
-      echo "  all fonts already installed and registered."
-    fi
+  if $FONTS_CHANGED; then
+    echo "  fonts installed to ~/Library/Fonts"
   else
-    echo "  WARNING: only $REGISTERED/${#FONT_FILES[@]} fonts registered. Check registry manually."
+    echo "  all fonts already installed."
   fi
 else
-  echo "  WSL interop not available — install MesloLGS NF fonts manually."
-fi
+  # Detect Windows user fonts directory via WSL interop
+  WIN_USER=$(cmd.exe /C "echo %USERNAME%" 2>/dev/null | tr -d '\r' || true)
+  if [[ -n "$WIN_USER" ]]; then
+    WIN_FONT_DIR="/mnt/c/Users/$WIN_USER/AppData/Local/Microsoft/Windows/Fonts"
+    mkdir -p "$WIN_FONT_DIR"
+    WIN_FONT_DIR_WIN="C:\\Users\\$WIN_USER\\AppData\\Local\\Microsoft\\Windows\\Fonts"
+    REG_KEY='HKCU\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
 
-# Configure Windows Terminal to use MesloLGS NF
-if [[ -n "$WIN_USER" ]]; then
-  WT_SETTINGS="/mnt/c/Users/$WIN_USER/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json"
-  if [[ -f "$WT_SETTINGS" ]]; then
-    CURRENT_FONT=$(jq -r '.profiles.defaults.font.face // empty' "$WT_SETTINGS")
-    if [[ "$CURRENT_FONT" == "MesloLGS NF" ]]; then
-      echo "  Windows Terminal font already set."
+    FONTS_CHANGED=false
+    for font in "${FONT_FILES[@]}"; do
+      if [[ ! -f "$WIN_FONT_DIR/$font" ]]; then
+        echo "  downloading: $font"
+        curl -fsSL -o "$WIN_FONT_DIR/$font" "$FONT_BASE_URL/${font// /%20}"
+        FONTS_CHANGED=true
+      fi
+      FONT_NAME="${font%.ttf} (TrueType)"
+      FONT_PATH_WIN="${WIN_FONT_DIR_WIN}\\${font}"
+      reg.exe add "$REG_KEY" /v "$FONT_NAME" /t REG_SZ /d "$FONT_PATH_WIN" /f > /dev/null 2>&1
+    done
+
+    REGISTERED=$(reg.exe query "$REG_KEY" 2>/dev/null | grep -c "MesloLGS" || true)
+    if [[ "$REGISTERED" -eq "${#FONT_FILES[@]}" ]]; then
+      if $FONTS_CHANGED; then
+        echo "  fonts installed and registered."
+      else
+        echo "  all fonts already installed and registered."
+      fi
     else
-      echo "  configuring Windows Terminal font to MesloLGS NF..."
-      jq '.profiles.defaults.font = (.profiles.defaults.font // {}) + {"face": "MesloLGS NF"}' "$WT_SETTINGS" > "${WT_SETTINGS}.tmp"
-      mv "${WT_SETTINGS}.tmp" "$WT_SETTINGS"
-      echo "  done. Windows Terminal will pick up the change automatically."
+      echo "  WARNING: only $REGISTERED/${#FONT_FILES[@]} fonts registered. Check registry manually."
+    fi
+
+    # Configure Windows Terminal
+    WT_SETTINGS="/mnt/c/Users/$WIN_USER/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json"
+    if [[ -f "$WT_SETTINGS" ]]; then
+      CURRENT_FONT=$(jq -r '.profiles.defaults.font.face // empty' "$WT_SETTINGS")
+      if [[ "$CURRENT_FONT" == "MesloLGS NF" ]]; then
+        echo "  Windows Terminal font already set."
+      else
+        echo "  configuring Windows Terminal font to MesloLGS NF..."
+        jq '.profiles.defaults.font = (.profiles.defaults.font // {}) + {"face": "MesloLGS NF"}' "$WT_SETTINGS" > "${WT_SETTINGS}.tmp"
+        mv "${WT_SETTINGS}.tmp" "$WT_SETTINGS"
+        echo "  done. Windows Terminal will pick up the change automatically."
+      fi
+    else
+      echo "  Windows Terminal settings not found — set font to 'MesloLGS NF' manually."
     fi
   else
-    echo "  Windows Terminal settings not found — set font to 'MesloLGS NF' manually."
+    echo "  WSL interop not available — install MesloLGS NF fonts manually."
   fi
 fi
 
@@ -126,6 +153,10 @@ echo ""
 echo "[6/7] Installing Docker Engine..."
 if command -v docker &>/dev/null; then
   echo "  already installed: $(docker --version)"
+elif $IS_MAC; then
+  echo "  Installing Docker Desktop via Homebrew..."
+  brew install --cask docker
+  echo "  Docker Desktop installed — launch it from Applications to complete setup."
 else
   # Install prerequisites
   sudo apt install -y -qq ca-certificates gnupg
@@ -146,20 +177,22 @@ else
   echo "  installed: $(docker --version)"
 fi
 
-# Add current user to docker group (avoids needing sudo for docker commands)
-if groups "$USER" | grep -q '\bdocker\b'; then
-  echo "  user already in docker group."
-else
-  sudo usermod -aG docker "$USER"
-  echo "  added $USER to docker group (log out and back in to take effect)."
-fi
+if ! $IS_MAC; then
+  # Add current user to docker group (avoids needing sudo for docker commands)
+  if groups "$USER" | grep -q '\bdocker\b'; then
+    echo "  user already in docker group."
+  else
+    sudo usermod -aG docker "$USER"
+    echo "  added $USER to docker group (log out and back in to take effect)."
+  fi
 
-# Ensure Docker daemon is running
-if sudo service docker status &>/dev/null; then
-  echo "  Docker daemon is running."
-else
-  sudo service docker start
-  echo "  Docker daemon started."
+  # Ensure Docker daemon is running
+  if sudo service docker status &>/dev/null; then
+    echo "  Docker daemon is running."
+  else
+    sudo service docker start
+    echo "  Docker daemon started."
+  fi
 fi
 
 # 7. Symlink dotfiles
@@ -185,7 +218,7 @@ if $HAS_REPO_CONFIG; then
   else
     echo "Existing p10k config detected in repo."
     read -rp "Reconfigure Powerlevel10k? [y/N] " answer
-    if [[ "${answer,,}" == "y" ]]; then
+    if [[ "${answer}" == "y" || "${answer}" == "Y" ]]; then
       zsh -ic "p10k configure"
       # If p10k wrote a new file (not our symlink), capture it into the repo
       if [[ -f "$HOME/.p10k.zsh" && ! -L "$HOME/.p10k.zsh" ]]; then
