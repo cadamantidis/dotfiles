@@ -1,4 +1,4 @@
-# Azure DevOps PR: create, approve, and merge in one command
+# Azure DevOps PR: create, approve, and merge in one idempotent command
 # Usage: azpr [source-branch] [target-branch]
 #   source-branch  defaults to current git branch
 #   target-branch  defaults to main
@@ -6,54 +6,125 @@ azpr() {
   local source_branch="${1:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null)}"
   local target_branch="${2:-main}"
 
+  # --- guards ---
   if [[ -z "$source_branch" ]]; then
     echo "azpr: error — could not determine source branch (not in a git repo?)" >&2
     return 1
   fi
-
   if [[ "$source_branch" == "$target_branch" ]]; then
     echo "azpr: error — source and target branches are the same ($source_branch)" >&2
     return 1
   fi
 
   echo "azpr: $source_branch → $target_branch"
-  read -q "REPLY?Create, approve, and merge? [y/N] "
+
+  # --- Phase 1: Reconnaissance ---
+  local pr_id="" need_create=false
+
+  # Check for active PRs
+  local active_prs
+  active_prs=$(az repos pr list \
+    --source-branch "$source_branch" \
+    --target-branch "$target_branch" \
+    --status active \
+    --output json 2>/dev/null)
+
+  local active_count
+  active_count=$(echo "$active_prs" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null)
+  active_count=${active_count:-0}
+
+  if [[ "$active_count" -gt 1 ]]; then
+    echo "azpr: error — $active_count active PRs found. Resolve manually:" >&2
+    echo "$active_prs" | python3 -c "
+import sys, json
+for pr in json.load(sys.stdin):
+    print(f\"  PR #{pr['pullRequestId']}: {pr['title']}\")
+" >&2
+    return 1
+  elif [[ "$active_count" -eq 1 ]]; then
+    pr_id=$(echo "$active_prs" | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['pullRequestId'])")
+    echo "azpr: found active PR #$pr_id"
+  else
+    # No active PR — check for completed (already merged)
+    local completed_id
+    completed_id=$(az repos pr list \
+      --source-branch "$source_branch" \
+      --target-branch "$target_branch" \
+      --status completed \
+      --top 1 \
+      --output tsv \
+      --query "[0].pullRequestId" 2>/dev/null)
+
+    if [[ -n "$completed_id" ]]; then
+      echo "azpr: PR #$completed_id already merged ($source_branch → $target_branch). Nothing to merge."
+      read -q "REPLY?Delete source branch '$source_branch'? [y/N] "
+      echo
+      if [[ "$REPLY" == "y" ]]; then
+        git push origin --delete "$source_branch" 2>/dev/null && \
+          echo "azpr: deleted remote branch '$source_branch'" || \
+          echo "azpr: warning — failed to delete remote branch" >&2
+        git branch -d "$source_branch" 2>/dev/null && \
+          echo "azpr: deleted local branch '$source_branch'" || \
+          echo "azpr: warning — failed to delete local branch (may not exist locally)" >&2
+      fi
+      return 0
+    fi
+
+    need_create=true
+  fi
+
+  # --- Phase 2: Adaptive prompt ---
+  local prompt_msg
+  if $need_create; then
+    prompt_msg="Create, approve, and merge? [y/N] "
+  else
+    prompt_msg="PR #$pr_id exists. Approve and merge? [y/N] "
+  fi
+
+  read -q "REPLY?$prompt_msg"
   echo
   if [[ "$REPLY" != "y" ]]; then
     echo "azpr: aborted"
     return 0
   fi
 
-  local pr_id
-  pr_id=$(az repos pr create \
-    --source-branch "$source_branch" \
-    --target-branch "$target_branch" \
-    --title "Merge $source_branch → $target_branch" \
-    --output tsv \
-    --query pullRequestId 2>&1)
+  # --- Phase 3: Execute ---
 
-  if [[ $? -ne 0 || -z "$pr_id" || ! "$pr_id" =~ ^[0-9]+$ ]]; then
-    echo "azpr: error — failed to create PR" >&2
-    echo "$pr_id" >&2
-    return 1
+  # Step 1: Create (if needed)
+  if $need_create; then
+    local create_output
+    create_output=$(az repos pr create \
+      --source-branch "$source_branch" \
+      --target-branch "$target_branch" \
+      --title "Merge $source_branch → $target_branch" \
+      --output tsv \
+      --query pullRequestId 2>&1)
+
+    if [[ $? -ne 0 || -z "$create_output" || ! "$create_output" =~ ^[0-9]+$ ]]; then
+      echo "azpr: error — failed to create PR" >&2
+      echo "$create_output" >&2
+      return 1
+    fi
+    pr_id="$create_output"
+    echo "azpr: created  PR #$pr_id"
   fi
 
-  echo "azpr: created  PR #$pr_id"
-
-  az repos pr set-vote --id "$pr_id" --vote approve --output none
+  # Step 2: Approve (idempotent — re-approving is a no-op)
+  az repos pr set-vote --id "$pr_id" --vote approve --output none 2>/dev/null
   if [[ $? -ne 0 ]]; then
     echo "azpr: warning — approval failed; PR #$pr_id may need manual approval" >&2
   else
     echo "azpr: approved PR #$pr_id"
   fi
 
+  # Step 3: Complete/merge (idempotent if already completing)
   az repos pr update \
     --id "$pr_id" \
     --status completed \
     --bypass-policy true \
     --bypass-policy-reason "auto-merge" \
     --delete-source-branch false \
-    --output none
+    --output none 2>/dev/null
 
   if [[ $? -eq 0 ]]; then
     echo "azpr: merged   PR #$pr_id  ($source_branch → $target_branch)"
