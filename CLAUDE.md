@@ -24,6 +24,10 @@ Symlink mappings:
 - `zsh/.zshrc` → `~/.zshrc`
 - `zsh/.p10k.zsh` → `~/.p10k.zsh` (conditional on existence)
 - `git/.gitconfig` → `~/.gitconfig`
+- `zsh/.zsh_functions` → `~/.zsh_functions`
+- `zsh/.zprofile` → `~/.zprofile` (conditional on existence)
+- `git/ignore` → `~/.config/git/ignore`
+- `ghostty/config` → `~/Library/Application Support/com.mitchellh.ghostty/config.ghostty` on macOS, or `~/.config/ghostty/config` elsewhere
 
 ### install.sh Flow
 
