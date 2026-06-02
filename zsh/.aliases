@@ -1,5 +1,8 @@
 # Custom shell aliases. Symlinked to ~/.aliases and sourced from .zshrc.
 
+# ── editor ───────────────────────────────────────────────────
+alias vim='nvim'                         # use neovim everywhere
+
 # ── dotfiles: edit & reload ──────────────────────────────────
 alias valias='nvim ~/.aliases'           # edit this file
 alias vsrc='nvim ~/.zshrc'               # edit .zshrc
