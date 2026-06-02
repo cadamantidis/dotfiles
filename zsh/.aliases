@@ -1,0 +1,8 @@
+# Custom shell aliases. Symlinked to ~/.aliases and sourced from .zshrc.
+
+# ── dotfiles: edit & reload ──────────────────────────────────
+alias valias='nvim ~/.aliases'           # edit this file
+alias vsrc='nvim ~/.zshrc'               # edit .zshrc
+alias vfunc='nvim ~/.zsh_functions'      # edit shell functions
+alias vgit='nvim ~/.gitconfig'           # edit git config
+alias reload='source ~/.zshrc'           # re-source .zshrc after edits
