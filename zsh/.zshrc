@@ -31,13 +31,16 @@ source $ZSH/oh-my-zsh.sh
 # User configuration
 
 # Preferred editor
-export EDITOR='vim'
+export EDITOR='nvim'
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
 # Custom functions
 [[ -f ~/.zsh_functions ]] && source ~/.zsh_functions
+
+# Custom aliases
+[[ -f ~/.aliases ]] && source ~/.aliases
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm

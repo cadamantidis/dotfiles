@@ -27,10 +27,10 @@ if $IS_MAC; then
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null || true)"
   fi
-  brew install git jq
+  brew install git jq neovim
 else
   sudo apt update -qq
-  sudo apt install -y -qq zsh curl git jq
+  sudo apt install -y -qq zsh curl git jq neovim
 fi
 
 # 2. Install Oh My Zsh (skip if already installed)
