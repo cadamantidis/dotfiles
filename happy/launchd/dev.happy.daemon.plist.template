@@ -21,7 +21,10 @@
     <string>__HOME__/.happy/logs/launchd-daemon.log</string>
     <key>StandardErrorPath</key>
     <string>__HOME__/.happy/logs/launchd-daemon.log</string>
+    <!-- NOT __HOME__: a launchd process has no TCC grants of its own, so anything
+         enumerating the cwd walks into Downloads/Pictures/Desktop/Documents and
+         triggers a macOS permission prompt for each. Sessions get their own cwd. -->
     <key>WorkingDirectory</key>
-    <string>__HOME__</string>
+    <string>__HOME__/.happy</string>
 </dict>
 </plist>

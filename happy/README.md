@@ -168,6 +168,20 @@ pleasant conversational answer with no message row means the tool never fired.
 - **Changing databases invalidates credentials.** Log out on the phone, create the account again,
   then `happy auth login`. Stale credentials produce a burst of `account.findUniqueOrThrow()` 500s.
 
+### macOS TCC prompts (Downloads / Pictures / Desktop / Documents)
+
+A launchd-run process has **no TCC grants of its own** — unlike one started from Terminal,
+which borrows Terminal's. So if the daemon's `WorkingDirectory` is `$HOME`, anything that
+enumerates the cwd walks into the protected folders and macOS prompts for each, attributed
+to bare `node`.
+
+The daemon therefore runs with `WorkingDirectory` = `~/.happy`. Sessions supply their own
+working directory, so nothing is lost.
+
+**Deny those prompts if they appear.** Nothing here needs those folders — repos live in
+`~/git` and `~/orca`, neither of which is TCC-protected — and granting them would give
+agents running with `--dangerously-skip-permissions` standing access to personal files.
+
 ## Boot chain
 
 ```
