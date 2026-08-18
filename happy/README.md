@@ -102,6 +102,55 @@ crypto dies client-side *before any request is sent*.
 `tailscale serve` gives a real Let's Encrypt cert and also removes the Android cleartext-HTTP
 question (`usesCleartextTraffic`) entirely.
 
+## Voice (ElevenLabs BYO agent)
+
+Happy's built-in voice mints its ElevenLabs token through *their* server behind a paywall, so
+it cannot work against a self-hosted server. The BYO path is the only self-host-compatible
+one — and it is unlimited, needs no Happy subscription, and connects the phone straight to
+ElevenLabs, bypassing the sync server entirely.
+
+Create an agent at <https://elevenlabs.io/app/agents> (product is now "ElevenLabs Agents",
+formerly "Conversational AI"), then add **two client tools**. The names are read from
+`packages/happy-app/sources/realtime/realtimeClientTools.ts` and are **case-sensitive**:
+
+| Tool | Parameters |
+|---|---|
+| `sendMessageToSession` | `sessionId` (string, required) · `message` (string, required) |
+| `processPermissionRequest` | `requestId` (string, required) · `decision` (enum `allow`/`deny`) |
+
+⚠️ Happy's own in-app help text calls the first tool `messageClaudeCode`. **That is wrong.**
+Following the UI copy produces an agent that greets you and then silently does nothing.
+
+Two details that matter more than they look:
+
+- **Bind `sessionId` to the dynamic variable**, not the LLM: in the tool JSON set
+  `"value_type": "dynamic_variable"` with `"dynamic_variable": "sessionId"`. Left as
+  `llm_prompt`, the model has to recite the session id from memory and will eventually
+  hallucinate one, producing silent no-ops.
+- **`expects_response: true`** with `response_timeout_secs` around 30. The shipped default is
+  `1` second, which fails every real round trip, and the form's "Wait for response" checkbox
+  did not always persist — verify in JSON mode after saving.
+
+Agent → **Settings → Security**:
+
+- **Overrides ON** for *System prompt*, *First message*, *Agent language*. Happy sets all
+  three at session start; if they are locked its injected prompt (carrying the live session
+  context) is silently discarded.
+- **Authentication OFF.** Counterintuitive but required: BYO mode connects with a bare
+  `agentId` and no server-minted token.
+- Consequently **the agent ID is a credential.** With auth off and no allowlist, anyone
+  holding it can connect, spend your credits, and (because System prompt override is on)
+  replace the prompt. An allowlist is host-based and may not apply to the native app —
+  untested.
+
+Finally, in the Happy app: **Settings → Voice** → paste the full agent ID **including the
+`agent_` prefix** (the field's placeholder omits it; the placeholder is wrong) and enable the
+bypass-token option. Billing is your own ElevenLabs account, ~$0.01/min.
+
+Verify by side effect, never by the agent's reply: ask for something observable ("create a
+file called voice-test.txt") and confirm `SessionMessage` rows increment in Postgres. A
+pleasant conversational answer with no message row means the tool never fired.
+
 ## Operating notes
 
 - **Server binds loopback only.** Tailscale's listener is the sole tailnet-facing surface, under
