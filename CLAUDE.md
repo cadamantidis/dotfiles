@@ -69,6 +69,13 @@ Machine-specific values are resolved at **runtime** by `happy/common.sh` (node p
 MagicDNS name) rather than baked into the plists, so an nvm upgrade or tailnet rename does not
 break the services at next boot. The plists are templates rendered by `setup.sh`.
 
+Sessions the daemon spawns run in **orchestrator mode**: `run-daemon.sh` exports
+`HAPPY_ORCHESTRATOR=1`, and hooks in the `claude-files` repo (`~/.claude/orchestrator/`) refuse
+main-thread edits and inject a conversational protocol, so a phone session discusses the work and
+hands it to an Orca supervised worker instead of editing directly. Happy is the thinking half,
+Orca the doing half. The two repos are a matched pair — see "Orchestrator mode" in
+`happy/README.md`.
+
 Four non-obvious constraints are documented in `happy/README.md` — read it before changing
 anything there. In short: PGlite is unusable (upstream bug corrupts `Bytes` columns), and
 `DATABASE_URL` alone does not switch off it (`DB_PROVIDER=postgres` is required, contradicting

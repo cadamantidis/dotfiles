@@ -26,4 +26,10 @@ if [ -f "$LOCK" ]; then
   fi
 fi
 
+# Every Claude Code session this daemon spawns is an orchestrator: it holds the conversation
+# and delegates the work to subagents. The PreToolUse gate in ~/.claude/orchestrator/ reads this
+# var and refuses main-thread edits; the SessionStart hook injects the protocol. Sessions started
+# at the keyboard never see this var, so they stay unrestricted. Inert without claude-files.
+export HAPPY_ORCHESTRATOR=1
+
 exec "$NODE" --no-warnings --no-deprecation "$ENTRY" daemon start-sync
