@@ -151,6 +151,83 @@ Verify by side effect, never by the agent's reply: ask for something observable 
 file called voice-test.txt") and confirm `SessionMessage` rows increment in Postgres. A
 pleasant conversational answer with no message row means the tool never fired.
 
+## Orchestrator mode
+
+Sessions started from the phone behave differently from sessions started at the keyboard. A
+phone-driven session is a **conversation**: it discusses what to do, and once you agree it hands
+the work to an [Orca](https://orca.computer) supervised worker, reads what comes back, and tells
+you what happened in prose. It never pastes a diff at you, and it never edits a repo directly —
+that is enforced, not merely requested.
+
+Happy is the thinking half; Orca is the doing half. Code work is only part of it — notes,
+research, and anything Claude's own tools reach get done directly in the conversation.
+
+The only part of this that lives here is the activation signal, one line in `run-daemon.sh`:
+
+```sh
+export HAPPY_ORCHESTRATOR=1
+```
+
+Happy spawns Claude Code with the daemon's inherited environment, so that variable reaches every
+session the daemon starts and no session you start yourself. Everything it activates lives in the
+`claude-files` repo, under `~/.claude/orchestrator/`:
+
+| File | Role |
+|---|---|
+| `gate.sh` | `PreToolUse` hook. Refuses `Edit`/`Write`/`MultiEdit`/`NotebookEdit` and mutating `Bash` in the main thread, while allowing `orca orchestration ...` and read-only inspection. |
+| `brief.sh` | `SessionStart` hook. Injects `protocol.md` as additional context. |
+| `protocol.md` | How the session converses, dispatches to Orca, and reports. |
+
+**The two repos are a matched pair.** This variable does nothing without `claude-files` installed,
+and the hooks there no-op without this variable. Neither half breaks anything on its own.
+
+### Constraints worth knowing before changing any of it
+
+- **A `PreToolUse` hook is the only mechanism that can restrict the main thread.**
+  `permissions.deny` and `--disallowedTools` apply to subagents too, which would defeat the point.
+  The hook distinguishes them because `PreToolUse` input carries `agent_id` only inside a
+  subagent — its absence means main thread. Verified under `permission_mode: bypassPermissions`,
+  which is what Happy's default `yolo` resolves to: hooks still fire, so the gate is real.
+- **The conversational register cannot be an output style.** `outputStyle` is a global settings
+  key with no CLI flag and no environment variable, so using one would impose this register at the
+  keyboard too. It goes through `SessionStart` → `additionalContext` instead, capped at 10,000
+  characters — `brief.sh` fails loudly rather than let a longer protocol be silently truncated.
+- **A coordinator does not have to be an Orca terminal, but there is only one of them.** Orca
+  assigns a single synthetic coordinator identity to every caller that isn't a live Orca terminal,
+  and `run-create` binds it. A second session rebinds it, and the first then fails with
+  `consumer_fenced: This coordinator terminal is bound to <other_run>`. `--run <run_id>` does not
+  override the binding; `orca orchestration run-use --id <run_id>` re-takes it, so the protocol
+  rebinds before each batch of calls. **Two concurrent phone sessions will fight over this.**
+  Minting a distinct identity with `--from <handle>` is refused outright:
+  `stable_pane_required: The coordinator terminal has no stable pane identity`.
+  **This is an accepted limitation: one orchestrator session at a time.** Multiple Orca
+  *projects* are fine; multiple simultaneous phone *sessions* are not. If that changes, the fix
+  is to have the session drive an Orca-managed coordinator terminal rather than being the
+  coordinator itself.
+- **Never dispatch with `--worktree new-child` or `new-top-level`.** Both resolve relative to the
+  caller's current worktree, which a non-terminal coordinator does not have, so they fail with
+  `selector_not_found`. The failure is dangerous rather than loud: the obvious recovery is
+  `--worktree current`, which puts the worker in the **live checkout** and lets it commit to the
+  checked-out branch. Create the worktree explicitly with `orca worktree create --repo <selector>`
+  and pass the exact `<repo_id>::<absolute_path>` selector. Orca puts worktrees under
+  `~/orca/workspaces/<repo>/<name>`, outside the repo itself.
+- **`check --wait` must stay at or under `--timeout-ms 500000`.** Orca's guide suggests 900000,
+  but Claude Code's shell tool is capped at 600 seconds and kills a longer call. The orchestrator
+  waits in slices instead.
+- **The gate's metacharacter check is literal.** `;` `&` `|` `<` `>` and `$(` are rejected anywhere
+  in a main-thread command, including inside quoted `--spec` and `--body` text, because parsing
+  quoting reliably in `sh` is how allowlists get bypassed.
+- **Orca must be running, and the repo must be registered.** `orca status` has to report a ready
+  runtime, orchestration must be enabled under Settings → Experimental, and the repo needs
+  `orca repo add`. Orca is not a KeepAlive launchd service like `dev.happy.server` — if it is
+  down, the session says so and declines code work rather than falling back to editing anything
+  itself.
+
+Hook registration is not in git: `claude-files` gitignores `claude/settings.json` because it
+carries Orca's generated hooks and machine-specific data. Its `install.sh` injects the two hook
+groups idempotently instead — re-run it after pulling, and it reports `already registered` when
+there is nothing to do.
+
 ## Operating notes
 
 - **Server binds loopback only.** Tailscale's listener is the sole tailnet-facing surface, under
@@ -219,7 +296,7 @@ launchctl kickstart -k gui/$(id -u)/dev.happy.daemon
 | `setup.sh` | Idempotent installer |
 | `common.sh` | Runtime resolvers (node / tailscale / MagicDNS name) |
 | `run-server.sh` | Server launcher — resolves node at runtime so nvm upgrades don't break boot |
-| `run-daemon.sh` | Daemon launcher — same, plus stale-lock cleanup |
+| `run-daemon.sh` | Daemon launcher — same, plus stale-lock cleanup and the orchestrator-mode signal |
 | `launchd/*.template` | Plists rendered by `setup.sh` (`__HAPPY_DIR__`, `__HOME__`) |
 
 Secrets live **outside** this repo: `~/.happy/pgpass` and `~/.happy/server-data/master-secret`,
