@@ -1,0 +1,17 @@
+# Config for the security-sweep workflow. Extends gitleaks' built-in ruleset
+# rather than replacing it — new upstream rules keep applying automatically.
+#
+# Add an allowlist entry below when a known false positive shows up (a test
+# fixture, an example token in docs, etc). See ../README.md for how to do
+# that safely without silencing real findings in the same file.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "test fixtures and example/placeholder credentials in docs"
+paths = [
+  '''(^|/)testdata/''',
+  '''(^|/)test-?fixtures?/''',
+  '''(^|/)__fixtures__/''',
+]
