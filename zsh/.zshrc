@@ -48,3 +48,5 @@ export NVM_DIR="$HOME/.nvm"
 
 # GitHub MCP server (claude-plugins-official) auth — reuse gh CLI token
 export GITHUB_PERSONAL_ACCESS_TOKEN="$(gh auth token)"
+SAVEHIST=999999
+HISTSIZE=999999
