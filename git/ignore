@@ -1,3 +1,4 @@
 **/.claude/settings.local.json
 .scratch/
 *.local.*
+**/.claude/tdd-guard/
