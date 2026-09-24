@@ -1,14 +1,16 @@
 # security-sweep
 
-Scheduled full-git-history secret scan across every public repo under the
-`cadamantidis` GitHub account. Runs as `.github/workflows/secret-sweep.yml`
-in this repo — a single "hub" workflow rather than one copy per repo, so a
-new public repo gets swept automatically without any config change here.
+Scheduled full-git-history secret scan across every repo (public and
+private) under the `cadamantidis` GitHub account. Runs as
+`.github/workflows/secret-sweep.yml` in this repo — a single "hub"
+workflow rather than one copy per repo, so a new repo gets swept
+automatically without any config change here.
 
 ## How it works
 
-1. `scan.sh` asks `gh repo list` for every public, non-fork, non-archived
-   repo under the account (auto-discovered, never a hardcoded list).
+1. `scan.sh` asks `gh repo list` for every non-fork, non-archived repo
+   under the account, public and private alike (auto-discovered, never a
+   hardcoded list).
 2. For each repo it does a **full** clone (history is the whole point, so
    no `--depth`/shallow clone) and runs `gitleaks detect` against it with
    `.gitleaks.toml`.
@@ -41,10 +43,31 @@ $ security-sweep/notify.sh   # only opens/updates an issue if scan.sh found some
 
 In CI, `.github/workflows/secret-sweep.yml` runs both on a daily schedule
 and on `workflow_dispatch` (manual trigger via `gh workflow run
-secret-sweep.yml`), using the workflow's own `GITHUB_TOKEN` — no PAT setup
-required. `GITHUB_TOKEN` only needs write access to *this* repo (issues +
-contents, for opening the issue and committing updated baselines);
-cloning other repos needs no auth at all since they're public.
+secret-sweep.yml`). It uses two different credentials for two different
+jobs:
+
+- The **Run sweep** step (repo discovery + cloning every repo, including
+  private ones) authenticates with a repo secret named **`SWEEP_PAT`**,
+  not the workflow's default `GITHUB_TOKEN`. `GITHUB_TOKEN` is scoped only
+  to *this* repo and can't read or clone other repos — public repos "work"
+  today anyway because public data is world-readable regardless of token
+  scope, but private repos need real auth. `SWEEP_PAT` must exist as a
+  repo secret for the private-repo portion of the sweep to work at all;
+  **without it, the workflow will fail** the moment `scan.sh` tries to
+  clone the first private repo.
+
+  Create it as a **fine-grained personal access token**:
+  - Resource owner: the account being swept (`cadamantidis`)
+  - Repository access: **All repositories**
+  - Permissions: **Contents — Read-only**
+
+  Then add it as a repo secret named `SWEEP_PAT`.
+
+- The **Notify on new findings** and **Commit updated baseline state**
+  steps keep using the workflow's own `secrets.GITHUB_TOKEN` — they only
+  need `issues: write` and `contents: write` on *this* repo (to open the
+  alert issue and commit baseline updates), not read access to any other
+  repo, so they don't need the wider-scoped PAT.
 
 ## Adding an allowlist entry
 

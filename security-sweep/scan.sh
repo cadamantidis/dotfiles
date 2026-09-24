@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Sweeps every public repo under a GitHub account's full git history for
-# secrets with gitleaks, using a per-repo baseline so only genuinely new
-# findings get surfaced. See README.md for the full design.
+# Sweeps every repo (public and private) under a GitHub account's full git
+# history for secrets with gitleaks, using a per-repo baseline so only
+# genuinely new findings get surfaced. See README.md for the full design.
 #
 # Requires on PATH: gh (authenticated), git, gitleaks, jq.
 #
@@ -30,14 +30,14 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 mkdir -p "$STATE_DIR"
 echo "[]" > "$NEW_FINDINGS_PATH"
 
-echo "Discovering public repos for $GH_OWNER..."
-mapfile -t REPOS < <(gh repo list "$GH_OWNER" --visibility public --source --no-archived --limit 1000 --json nameWithOwner -q '.[].nameWithOwner')
+echo "Discovering repos for $GH_OWNER..."
+mapfile -t REPOS < <(gh repo list "$GH_OWNER" --source --no-archived --limit 1000 --json nameWithOwner -q '.[].nameWithOwner')
 
 if [ "${#REPOS[@]}" -eq 0 ]; then
-  echo "error: no public repos found for $GH_OWNER" >&2
+  echo "error: no repos found for $GH_OWNER" >&2
   exit 1
 fi
-echo "Found ${#REPOS[@]} public repo(s): ${REPOS[*]}"
+echo "Found ${#REPOS[@]} repo(s): ${REPOS[*]}"
 
 for repo in "${REPOS[@]}"; do
   safe_name="${repo//\//__}"
